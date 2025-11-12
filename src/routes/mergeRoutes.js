@@ -136,7 +136,7 @@ function normalizeRow(row, platform) {
         orderID: row["amazon-order-id"],
         OrderDate: normalizeDate(row["purchase-date"]),
         ProductName: row["product-name"],
-        Quantity: row["quantity-purchased"],
+        Quantity: row["quantity"],
         netAmount: parseFloat(row["item-price"]) || 0,
         PaymentMethod: row["payment-method"] || "COD",
       };
