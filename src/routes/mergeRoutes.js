@@ -325,4 +325,97 @@ router.post("/merge-sheets", upload.array("files", 10), async (req, res) => {
   }
 });
 
+
+
+
+// -----------------------------
+// Route: POST /merge-sheets-with-tax
+// -----------------------------
+router.post("/merge-sheets-with-tax", upload.array("files", 10), async (req, res) => {
+  try {
+    let mergedData = [];
+
+    for (const file of req.files) {
+      const platform = detectPlatform(file.originalname);
+      const workbook = XLSX.readFile(file.path);
+      const sheetName = workbook.SheetNames[0];
+      const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+      if (!sheetData.length) {
+        console.warn(`⚠️ No data in ${file.originalname}`);
+        continue;
+      }
+
+      const formatted = sheetData
+        .map((row) => {
+          const cleanRow = cleanKeys(row);
+          const base = normalizeRow(cleanRow, platform);
+
+          if (!base) return null;
+
+          // 🟩 Add discount & taxes based on platform
+          switch (platform) {
+            case "Amazon":
+              base.Taxes = cleanRow["item-tax"] || "";
+              base.Discount = "";
+              break;
+
+            case "Flipkart":
+              base.Taxes = cleanRow["igst amount"] || "";
+              base.Discount = cleanRow["total discount"] || "";
+              break;
+
+            case "Shopify":
+              base.Taxes = cleanRow["taxes"] || "";
+              base.Discount = cleanRow["discount amount"] || "";
+              break;
+
+            default:
+              base.Taxes = "";
+              base.Discount = "";
+          }
+
+          return base;
+        })
+        .filter(Boolean);
+
+      mergedData.push(...formatted);
+      fs.unlinkSync(file.path);
+      console.log(`✅ Processed ${file.originalname} (${platform})`);
+    }
+
+    if (!mergedData.length) {
+      return res.status(400).json({ message: "No valid data found in uploaded files" });
+    }
+
+    const newWorkbook = XLSX.utils.book_new();
+    const newSheet = XLSX.utils.json_to_sheet(mergedData);
+    XLSX.utils.book_append_sheet(newWorkbook, newSheet, "MasterSheet_With_Tax");
+
+    const timestamp = Date.now();
+    const outputFile = path.join("uploads", `master_sheet_with_tax_${timestamp}.xlsx`);
+    XLSX.writeFile(newWorkbook, outputFile);
+
+    // 🟦 Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(outputFile, {
+      resource_type: "raw",
+      folder: "merged-sheets-with-tax",
+      public_id: `master_sheet_with_tax_${timestamp}`,
+    });
+
+    fs.unlinkSync(outputFile);
+
+    res.json({
+      message: "Merged (with tax/discount) and uploaded successfully",
+      cloudinaryUrl: result.secure_url,
+      public_id: result.public_id,
+    });
+  } catch (error) {
+    console.error("❌ Error merging/uploading (with tax):", error);
+    res.status(500).json({ message: "Error merging/uploading sheets (with tax)", error });
+  }
+});
+
+
+
 module.exports = router;
