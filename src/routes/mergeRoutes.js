@@ -298,6 +298,8 @@ router.post(
   "/merge-sheets-with-tax",
   upload.array("files", 10),
   async (req, res) => {
+
+    console.log("🔔 /merge-sheets-with-tax endpoint hit", req.files);
     try {
       let mergedData = [];
 
